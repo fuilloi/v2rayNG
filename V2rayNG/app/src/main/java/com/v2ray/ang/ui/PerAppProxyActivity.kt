@@ -48,10 +48,10 @@ import com.v2ray.ang.compose.AppTopBar
 import com.v2ray.ang.compose.colorFabActive
 import com.v2ray.ang.dto.AppInfo
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastInfo
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.PerAppProxyViewModel
-import es.dmoral.toasty.Toasty
 
 class PerAppProxyActivity : ComponentActivity() {
 
@@ -82,11 +82,7 @@ class PerAppProxyActivity : ComponentActivity() {
                     onPerAppProxyChanged = { viewModel.setPerAppProxyEnabled(it) },
                     onBypassAppsChanged = { viewModel.setBypassAppsEnabled(it) },
                     onInfoClick = {
-                        Toasty.info(
-                            this,
-                            getString(R.string.summary_pref_per_app_proxy),
-                            Toast.LENGTH_LONG
-                        )
+                        toastInfo(R.string.summary_pref_per_app_proxy)
                     },
                     onToggleApp = { viewModel.toggle(it) },
                     onSearch = { viewModel.filterApps(it) },

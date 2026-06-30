@@ -2,6 +2,8 @@ package com.v2ray.ang.compose
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box          // 新增
+import androidx.compose.foundation.layout.fillMaxSize // 新增
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -11,6 +13,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier                   // 新增
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -148,6 +151,7 @@ fun AppTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColor else LightColor
+    val snackbarController = rememberAppSnackbarController()
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -161,10 +165,19 @@ fun AppTheme(
         }
     }
 
-    CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+    CompositionLocalProvider(
+        LocalDarkTheme provides darkTheme,
+        LocalAppSnackbar provides snackbarController
+    ) {
         MaterialTheme(
-            colorScheme = colorScheme,
-            content = content
-        )
+            colorScheme = colorScheme
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                content()
+
+                AppSnackbarBridge(controller = snackbarController)
+                AppSnackbarHost(hostState = snackbarController.hostState)
+            }
+        }
     }
 }

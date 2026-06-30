@@ -41,10 +41,6 @@ class AngApplication : Application() {
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
 
-        es.dmoral.toasty.Toasty.Config.getInstance()
-            .setGravity(android.view.Gravity.BOTTOM, 0, 300)
-            .apply()
-
         // Initialize theme state from MMKV
         ThemeManager.refresh()
     }

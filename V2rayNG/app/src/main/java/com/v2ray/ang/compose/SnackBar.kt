@@ -1,148 +1,233 @@
 package com.v2ray.ang.compose
 
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-
-object AppSnackbar {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
-    private val _visible = MutableStateFlow(false)
-    val visible: StateFlow<Boolean> = _visible.asStateFlow()
-
-    private val _message = MutableStateFlow("")
-    val message: StateFlow<String> = _message.asStateFlow()
-
-    private val _type = MutableStateFlow(ToastType.NORMAL)
-    val type: StateFlow<ToastType> = _type.asStateFlow()
-
-    fun show(
-        message: CharSequence,
-        type: ToastType = ToastType.NORMAL,
-        duration: Int = Toast.LENGTH_SHORT
-    ) {
-        scope.launch {
-            _message.value = message.toString()
-            _type.value = type
-            _visible.value = true
-
-            val delayMillis = if (duration == Toast.LENGTH_LONG) 3500L else 2000L
-            delay(delayMillis)
-            _visible.value = false
-        }
-    }
-}
+import java.util.concurrent.atomic.AtomicInteger
 
 enum class ToastType {
     NORMAL, SUCCESS, ERROR, INFO
 }
 
-@Composable
-fun AppSnackbarHost() {
-    val visible by AppSnackbar.visible.collectAsState()
-    val message by AppSnackbar.message.collectAsState()
-    val type by AppSnackbar.type.collectAsState()
+data class AppSnackbarMessage(
+    val message: CharSequence,
+    val type: ToastType = ToastType.NORMAL,
+    val long: Boolean = false,
+)
 
-    val isDark = LocalDarkTheme.current
+object AppSnackbarManager {
+    private val activeHosts = AtomicInteger(0)
 
-    val bgColor = when (type) {
-        ToastType.NORMAL -> if (isDark) toastNormalBgDark else toastNormalBgLight
-        ToastType.SUCCESS -> toastSuccessBg
-        ToastType.ERROR   -> toastErrorBg
-        ToastType.INFO    -> toastInfoBg
-        else -> if (isDark) toastNormalBgDark else toastNormalBgLight
-    }
-    val iconText = when (type) {
-        ToastType.SUCCESS -> "✓"
-        ToastType.ERROR   -> "✕"
-        ToastType.INFO    -> "ℹ"
-        else -> null
+    private val _messages = MutableSharedFlow<AppSnackbarMessage>(
+        replay = 0,
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val messages = _messages.asSharedFlow()
+
+    fun registerHost() {
+        activeHosts.incrementAndGet()
     }
 
-    AnimatedVisibility(
-        visible = visible,
-        enter = slideInVertically(
-            initialOffsetY = { it },
-            animationSpec = tween(300)
-        ),
-        exit = slideOutVertically(
-            targetOffsetY = { it },
-            animationSpec = tween(300)
+    fun unregisterHost() {
+        val current = activeHosts.decrementAndGet()
+        if (current < 0) activeHosts.set(0)
+    }
+
+    fun hasActiveHost(): Boolean = activeHosts.get() > 0
+
+    fun show(
+        message: CharSequence,
+        type: ToastType = ToastType.NORMAL,
+        long: Boolean = false,
+    ): Boolean {
+        if (!hasActiveHost()) return false
+        return _messages.tryEmit(
+            AppSnackbarMessage(
+                message = message,
+                type = type,
+                long = long
+            )
         )
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = bgColor,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 100.dp)
-                    .clip(RoundedCornerShape(24.dp))
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    if (iconText != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(toastIconCircleBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = iconText,
-                                color = toastTextColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                    }
+    }
+}
 
-                    Text(
-                        text = message,
-                        color = toastTextColor,
-                        fontSize = 14.sp,
-                        maxLines = 8,
-                        modifier = Modifier.weight(1f)
-                    )
+class AppSnackbarController(
+    val hostState: SnackbarHostState,
+    private val scope: CoroutineScope,
+) {
+    fun show(
+        message: CharSequence,
+        type: ToastType = ToastType.NORMAL,
+        long: Boolean = false,
+    ) {
+        scope.launch {
+            hostState.currentSnackbarData?.dismiss()
+            hostState.showSnackbar(
+                message = message.toString(),
+                actionLabel = type.name,
+                duration = if (long) SnackbarDuration.Long else SnackbarDuration.Short,
+                withDismissAction = false,
+            )
+        }
+    }
+}
+
+val LocalAppSnackbar = staticCompositionLocalOf<AppSnackbarController> {
+    error("AppSnackbarController not provided. Wrap your content in AppTheme.")
+}
+
+@Composable
+fun rememberAppSnackbarController(): AppSnackbarController {
+    val hostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    return remember(hostState, scope) { AppSnackbarController(hostState, scope) }
+}
+
+@Composable
+fun AppSnackbarBridge(
+    controller: AppSnackbarController
+) {
+    DisposableEffect(Unit) {
+        AppSnackbarManager.registerHost()
+        onDispose { AppSnackbarManager.unregisterHost() }
+    }
+
+    LaunchedEffect(controller) {
+        AppSnackbarManager.messages.collect { event ->
+            controller.show(
+                message = event.message,
+                type = event.type,
+                long = event.long
+            )
+        }
+    }
+}
+
+private val ToastCornerRadius = 24.dp
+private val ToastHorizontalPad = 16.dp
+private val ToastVerticalPad = 12.dp
+private val ToastIconSize = 24.dp
+private val ToastIconSpacing = 10.dp
+private val ToastMaxLines = 8
+private val ToastMaxWidthFraction = 0.75f
+private val ToastBottomOffset = 100.dp
+
+@Composable
+fun AppSnackbarHost(
+    hostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val maxSnackbarWidth = maxWidth * ToastMaxWidthFraction
+
+        SnackbarHost(
+            hostState = hostState,
+            modifier = Modifier.fillMaxSize()
+        ) { data ->
+            val type = runCatching {
+                ToastType.valueOf(data.visuals.actionLabel.orEmpty())
+            }.getOrDefault(ToastType.NORMAL)
+
+            val isDark = LocalDarkTheme.current
+            val bgColor = when (type) {
+                ToastType.NORMAL -> if (isDark) toastNormalBgDark else toastNormalBgLight
+                ToastType.SUCCESS -> toastSuccessBg
+                ToastType.ERROR -> toastErrorBg
+                ToastType.INFO -> toastInfoBg
+            }
+
+            val iconText = when (type) {
+                ToastType.SUCCESS -> "✓"
+                ToastType.ERROR -> "✕"
+                ToastType.INFO -> "ℹ"
+                ToastType.NORMAL -> null
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = ToastBottomOffset),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .widthIn(max = maxSnackbarWidth),
+                    shape = RoundedCornerShape(ToastCornerRadius),
+                    color = bgColor,
+                    shadowElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(
+                            horizontal = ToastHorizontalPad,
+                            vertical = ToastVerticalPad
+                        ),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (iconText != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(ToastIconSize)
+                                    .clip(CircleShape)
+                                    .background(toastIconCircleBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = iconText,
+                                    color = toastTextColor,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(ToastIconSpacing))
+                        }
+
+                        Text(
+                            text = data.visuals.message,
+                            color = toastTextColor,
+                            fontSize = 14.sp,
+                            maxLines = ToastMaxLines,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.wrapContentWidth()
+                        )
+                    }
                 }
             }
         }
